@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Архитектура Доминирования — Автономная Бизнес-Система</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=Raleway:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+  :root {
+    --bg-deep: #06060b;
+    --bg-section: #0a0a12;
+    --bg-card: #0f0f1a;
+    --bg-card-elevated: #141422;
+    --gold: #c9a84c;
+    --gold-light: #e8d48b;
+    --gold-dim: #8a7230;
+    --teal: #2dd4bf;
+    --teal-dim: rgba(45,212,191,0.15);
+    --text-primary: #f0ece4;
+    --text-secondary: #9a9590;
+    --text-muted: #5a5550;
+    --border-subtle: rgba(201,168,76,0.12);
+    --border-gold: rgba(201,168,76,0.3);
+    --serif: 'Playfair Display', Georgia, serif;
+    --sans: 'Raleway', sans-serif;
+    --mono: 'JetBrains Mono', monospace;
+  }
+
+  html { scroll-behavior: smooth; -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg-deep);
+    color: var(--text-primary);
+    line-height: 1.7;
+    overflow-x: hidden;
+  }
+
+  /* ══════════════════════════════════════
+     BACKGROUND — ORBS + BOKEH + GRAIN
+     ══════════════════════════════════════ */
+  .bg-orbs { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .bg-orbs .orb {
+    position: absolute; border-radius: 50%;
+    filter: blur(120px); opacity: 0.35;
+    will-change: transform;
+  }
+  .orb-1 { width: 600px; height: 600px; top: -10%; left: -10%; background: radial-gradient(circle, rgba(201,168,76,0.4), transparent 70%); animation: drift1 30s ease-in-out infinite alternate; }
+  .orb-2 { width: 500px; height: 500px; bottom: 20%; right: -8%; background: radial-gradient(circle, rgba(45,212,191,0.25), transparent 70%); animation: drift2 25s ease-in-out infinite alternate; }
+  .orb-3 { width: 400px; height: 400px; top: 50%; left: 30%; background: radial-gradient(circle, rgba(201,168,76,0.2), transparent 70%); animation: drift3 35s ease-in-out infinite alternate; }
+
+  @keyframes drift1 { 0% { transform: translate(0,0); } 100% { transform: translate(60px, 40px); } }
+  @keyframes drift2 { 0% { transform: translate(0,0); } 100% { transform: translate(-50px, -30px); } }
+  @keyframes drift3 { 0% { transform: translate(0,0); } 100% { transform: translate(40px, -50px); } }
+
+  .bokeh-layer { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
+  .bokeh-dot {
+    position: absolute; border-radius: 50%;
+    will-change: transform, opacity;
+    animation: floatBokeh linear infinite;
+  }
+  @keyframes floatBokeh {
+    0% { transform: translateY(0) translateX(0); opacity: 0; }
+    10% { opacity: 1; }
+    90% { opacity: 1; }
+    100% { transform: translateY(-100vh) translateX(40px); opacity: 0; }
+  }
+
+  .grain {
+    position: fixed; inset: 0; z-index: 9999; pointer-events: none;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.03'/%3E%3C/svg%3E");
+    background-repeat: repeat; opacity: 0.4;
+  }
+
+  /* ══════════════════════════════════════
+     STICKY NAVBAR
+     ══════════════════════════════════════ */
+  .navbar {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 1000;
+    padding: 0 32px; height: 64px;
+    display: flex; align-items: center; justify-content: space-between;
+    background: rgba(6,6,11,0.0);
+    backdrop-filter: blur(0px);
+    border-bottom: 1px solid transparent;
+    transition: all 0.5s cubic-bezier(.4,0,.2,1);
+    transform: translateY(-100%); opacity: 0;
+  }
+  .navbar.visible {
+    transform: translateY(0); opacity: 1;
+    background: rgba(6,6,11,0.88);
+    backdrop-filter: blur(20px) saturate(180%);
+    border-bottom: 1px solid var(--border-subtle);
+  }
+  .nav-logo {
+    font-family: var(--serif); font-size: 1rem; font-weight: 700;
+    color: var(--text-primary); letter-spacing: 0.04em;
+  }
+  .nav-logo .dot { color: var(--gold); }
+  .nav-cta {
+    padding: 10px 24px;
+    font-family: var(--sans); font-weight: 600; font-size: 0.72rem; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--bg-deep); background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    text-decoration: none; position: relative; overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .nav-cta::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.45), transparent);
+    animation: shimmer 3.5s ease-in-out infinite;
+  }
+  .nav-cta:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(201,168,76,0.35); }
+
+  /* ══════════════════════════════════════
+     LAYOUT
+     ══════════════════════════════════════ */
+  .wrapper { position: relative; z-index: 1; }
+  section { padding: 100px 24px; max-width: 1100px; margin: 0 auto; }
+
+  .section-divider {
+    max-width: 1100px; margin: 0 auto; height: 1px; position: relative; overflow: hidden;
+    background: rgba(201,168,76,0.06);
+  }
+  .section-divider::after {
+    content: ''; position: absolute; top: 0; left: -60%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: dividerSweep 4s ease-in-out infinite;
+  }
+  @keyframes dividerSweep { 0% { left: -60%; } 100% { left: 100%; } }
+
+  /* ══════════════════════════════════════
+     TYPOGRAPHY
+     ══════════════════════════════════════ */
+  h1, h2, h3 { font-family: var(--serif); font-weight: 700; letter-spacing: 0.01em; }
+  h1 { font-size: clamp(2.4rem, 5vw, 3.8rem); line-height: 1.15; color: var(--text-primary); }
+  h2 { font-size: clamp(1.6rem, 3.5vw, 2.4rem); line-height: 1.25; margin-bottom: 40px; }
+  h3 { font-size: 1.15rem; font-weight: 600; color: var(--gold-light); margin-bottom: 12px; }
+  p { color: var(--text-secondary); font-weight: 400; font-size: 1.05rem; }
+  .gold { color: var(--gold); }
+
+  .label {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.25em; text-transform: uppercase;
+    color: var(--gold-dim); margin-bottom: 16px; display: block;
+  }
+
+  /* ══════════════════════════════════════
+     CTA BUTTON + SHIMMER
+     ══════════════════════════════════════ */
+  .cta {
+    display: inline-block; padding: 18px 42px;
+    font-family: var(--sans); font-weight: 600; font-size: 0.95rem; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--bg-deep); background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    border: none; border-radius: 0; cursor: pointer; text-decoration: none;
+    position: relative; overflow: hidden;
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+  }
+  .cta::before {
+    content: ''; position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent);
+    animation: shimmer 3.5s ease-in-out infinite;
+  }
+  @keyframes shimmer { 0%, 100% { left: -100%; } 50% { left: 150%; } }
+  .cta:hover { transform: translateY(-2px); box-shadow: 0 8px 40px rgba(201,168,76,0.4); }
+  .cta span { position: relative; z-index: 1; }
+
+  /* ══════════════════════════════════════
+     MARQUEE
+     ══════════════════════════════════════ */
+  .marquee-wrap {
+    overflow: hidden; padding: 18px 0;
+    border-top: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-subtle);
+    background: rgba(201,168,76,0.02);
+  }
+  .marquee-track {
+    display: flex; gap: 60px; width: max-content;
+    animation: marqueeScroll 28s linear infinite;
+  }
+  .marquee-track span {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--gold-dim); white-space: nowrap;
+  }
+  .marquee-track .sep { color: var(--gold); }
+  @keyframes marqueeScroll { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+
+  /* ══════════════════════════════════════
+     HERO
+     ══════════════════════════════════════ */
+  .hero { padding-top: 140px; padding-bottom: 100px; text-align: center; }
+  .hero .subtitle {
+    max-width: 680px; margin: 28px auto 0; font-size: 1.1rem; line-height: 1.8; color: var(--text-secondary);
+  }
+  .hero .condition {
+    display: inline-block; margin-top: 32px; padding: 8px 20px;
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.18em; text-transform: uppercase;
+    color: var(--gold-dim); border: 1px solid var(--border-subtle);
+  }
+  .hero .cta { margin-top: 48px; }
+  .hero h1::after {
+    content: ''; display: block; width: 60px; height: 2px;
+    background: var(--gold); margin: 28px auto 0;
+  }
+
+  /* ══════════════════════════════════════
+     ANNOYANCE
+     ══════════════════════════════════════ */
+  .annoyance { text-align: center; }
+  .annoyance-list { list-style: none; max-width: 720px; margin: 0 auto 48px; }
+  .annoyance-list li {
+    padding: 20px 0; font-size: 1.1rem; color: var(--text-secondary); line-height: 1.7;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  .annoyance-list li::before { content: '—'; color: var(--gold-dim); margin-right: 12px; font-weight: 700; }
+  .verdict {
+    max-width: 700px; margin: 0 auto; padding: 32px 40px;
+    border-left: 3px solid var(--gold);
+    background: linear-gradient(90deg, rgba(201,168,76,0.04), transparent);
+    text-align: left;
+  }
+  .verdict p { color: var(--text-primary); font-size: 1.05rem; font-weight: 500; }
+  .verdict strong { color: var(--gold-light); }
+
+  /* ══════════════════════════════════════
+     CASE STUDY — SOFIA
+     ══════════════════════════════════════ */
+  .case-study { padding: 100px 24px 120px; position: relative; }
+  .case-study::before {
+    content: ''; position: absolute; inset: 0;
+    background: linear-gradient(180deg, transparent 0%, rgba(201,168,76,0.03) 30%, rgba(201,168,76,0.03) 70%, transparent 100%);
+    pointer-events: none;
+  }
+  .case-inner { max-width: 1100px; margin: 0 auto; position: relative; }
+  .case-card {
+    background: var(--bg-card); border: 1px solid var(--border-gold);
+    padding: 60px; position: relative; overflow: hidden;
+  }
+  .case-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+  }
+  .case-card::after {
+    content: ''; position: absolute; bottom: -100px; right: -100px; width: 300px; height: 300px;
+    background: radial-gradient(circle, rgba(201,168,76,0.08), transparent 70%);
+    pointer-events: none;
+  }
+  .case-badge {
+    display: inline-block; padding: 6px 16px; margin-bottom: 28px;
+    font-family: var(--mono); font-size: 0.65rem; letter-spacing: 0.3em; text-transform: uppercase;
+    color: var(--gold); border: 1px solid var(--border-gold); background: rgba(201,168,76,0.05);
+  }
+  .case-card h2 { margin-bottom: 48px; }
+  .case-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 40px; }
+  .case-block h3 {
+    font-family: var(--mono); font-size: 0.7rem; letter-spacing: 0.2em;
+    text-transform: uppercase; color: var(--gold-dim); font-weight: 500; margin-bottom: 14px;
+  }
+  .case-block p { font-size: 1rem; line-height: 1.75; }
+  .case-result {
+    margin-top: 48px; padding-top: 40px;
+    border-top: 1px solid var(--border-subtle);
+    display: flex; align-items: center; gap: 24px;
+  }
+  .result-number {
+    font-family: var(--serif); font-size: 3.5rem; font-weight: 800;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; line-height: 1; min-width: 140px;
+  }
+  .result-text { font-size: 1.05rem; color: var(--text-secondary); max-width: 500px; }
+
+  .sofia-quote {
+    margin-top: 40px; padding: 28px 32px;
+    background: rgba(201,168,76,0.03); border-left: 2px solid var(--gold-dim);
+    display: flex; align-items: flex-start; gap: 20px;
+  }
+  .sofia-avatar {
+    width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
+    object-fit: cover;
+    border: 2px solid var(--gold-dim);
+    box-shadow: 0 0 20px rgba(201,168,76,0.2);
+  }
+  .sofia-quote blockquote {
+    font-family: var(--serif); font-style: italic; font-size: 1rem;
+    color: var(--text-secondary); line-height: 1.7;
+  }
+  .sofia-quote cite {
+    display: block; margin-top: 10px;
+    font-family: var(--mono); font-size: 0.7rem; font-style: normal;
+    letter-spacing: 0.1em; color: var(--gold-dim);
+  }
+
+  /* ══════════════════════════════════════
+     METRICS STRIP
+     ══════════════════════════════════════ */
+  .metrics {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+    max-width: 1100px; margin: 0 auto;
+    border: 1px solid var(--border-subtle); background: var(--bg-card);
+  }
+  .metric {
+    text-align: center; padding: 40px 20px;
+    border-right: 1px solid var(--border-subtle);
+    transition: background 0.3s ease;
+  }
+  .metric:last-child { border-right: none; }
+  .metric:hover { background: rgba(201,168,76,0.03); }
+  .metric-num {
+    font-family: var(--serif); font-size: clamp(2rem, 4vw, 2.8rem); font-weight: 800;
+    background: linear-gradient(135deg, var(--gold), var(--gold-light));
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    background-clip: text; line-height: 1; margin-bottom: 10px;
+  }
+  .metric-label {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--text-muted);
+  }
+
+  /* ══════════════════════════════════════
+     COMPARISON TABLE
+     ══════════════════════════════════════ */
+  .comparison h2 { text-align: center; }
+  .table-wrap {
+    overflow-x: auto; margin-top: 20px;
+    border: 1px solid var(--border-subtle); background: var(--bg-card);
+  }
+  .comp-table { width: 100%; border-collapse: collapse; }
+  .comp-table th, .comp-table td { padding: 20px 24px; text-align: left; font-size: 0.95rem; vertical-align: top; }
+  .comp-table thead th {
+    font-family: var(--mono); font-size: 0.68rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--gold-dim); border-bottom: 1px solid var(--border-gold);
+    background: rgba(201,168,76,0.03);
+  }
+  .comp-table thead th:first-child { color: var(--text-muted); }
+  .comp-table tbody tr {
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: all 0.5s ease; opacity: 0; transform: translateY(12px);
+  }
+  .comp-table tbody tr.row-visible { opacity: 1; transform: translateY(0); }
+  .comp-table tbody tr:hover { background: rgba(201,168,76,0.02); }
+  .comp-table tbody tr:last-child { border-bottom: none; }
+  .comp-table tbody td:first-child { font-weight: 600; color: var(--text-primary); font-size: 0.9rem; }
+  .comp-table tbody td:nth-child(2) { color: var(--text-muted); }
+  .comp-table tbody td:nth-child(3) { color: var(--teal); }
+
+  /* ══════════════════════════════════════
+     AUDIT
+     ══════════════════════════════════════ */
+  .audit { text-align: center; }
+  .audit-features {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 32px;
+    max-width: 960px; margin: 0 auto 56px;
+  }
+  .audit-feature {
+    padding: 36px 28px; text-align: left;
+    border: 1px solid var(--border-subtle); background: var(--bg-card);
+    position: relative; overflow: hidden;
+    transition: border-color 0.4s ease, transform 0.4s ease, box-shadow 0.4s ease;
+  }
+  .audit-feature::after {
+    content: ''; position: absolute; inset: 0;
+    background: radial-gradient(circle at 50% 0%, rgba(201,168,76,0.15), transparent 60%);
+    opacity: 0; transition: opacity 0.4s ease; pointer-events: none;
+  }
+  .audit-feature:hover { border-color: var(--border-gold); transform: translateY(-6px); box-shadow: 0 12px 50px rgba(201,168,76,0.12); }
+  .audit-feature:hover::after { opacity: 1; }
+  .audit-feature .num {
+    font-family: var(--serif); font-size: 2.2rem; font-weight: 800; color: var(--gold);
+    line-height: 1; margin-bottom: 16px;
+  }
+  .audit-feature h3 { font-family: var(--sans); font-size: 1rem; font-weight: 600; color: var(--text-primary); margin-bottom: 10px; }
+  .audit-feature p { font-size: 0.92rem; line-height: 1.65; }
+
+  /* ══════════════════════════════════════
+     FAQ
+     ══════════════════════════════════════ */
+  .faq { max-width: 760px; margin: 0 auto; padding: 100px 24px; }
+  .faq h2 { text-align: center; }
+  .faq-item { border-bottom: 1px solid var(--border-subtle); }
+  .faq-q {
+    width: 100%; padding: 22px 0; display: flex; justify-content: space-between; align-items: center;
+    background: none; border: none; cursor: pointer;
+    font-family: var(--sans); font-size: 1.05rem; font-weight: 500;
+    color: var(--text-primary); text-align: left; transition: color 0.3s ease;
+  }
+  .faq-q:hover { color: var(--gold); }
+  .faq-icon {
+    width: 24px; height: 24px; flex-shrink: 0; margin-left: 16px; position: relative;
+  }
+  .faq-icon::before, .faq-icon::after {
+    content: ''; position: absolute; background: var(--gold-dim);
+    top: 50%; left: 50%; transform: translate(-50%, -50%);
+    transition: all 0.3s ease;
+  }
+  .faq-icon::before { width: 14px; height: 1.5px; }
+  .faq-icon::after { width: 1.5px; height: 14px; }
+  .faq-item.open .faq-icon::after { transform: translate(-50%, -50%) rotate(90deg); opacity: 0; }
+  .faq-a { max-height: 0; overflow: hidden; transition: max-height 0.4s ease, padding 0.4s ease; }
+  .faq-item.open .faq-a { max-height: 300px; padding-bottom: 22px; }
+  .faq-a p { font-size: 0.95rem; line-height: 1.75; color: var(--text-secondary); }
+
+  /* ══════════════════════════════════════
+     CALCULATOR
+     ══════════════════════════════════════ */
+  .calculator { text-align: center; }
+  .calc-form {
+    max-width: 640px; margin: 0 auto;
+    background: var(--bg-card); border: 1px solid var(--border-subtle);
+    padding: 48px; text-align: left;
+  }
+  .form-group { margin-bottom: 32px; }
+  .form-group > label {
+    display: block; margin-bottom: 12px;
+    font-family: var(--sans); font-size: 0.95rem; font-weight: 500; color: var(--text-primary);
+  }
+  .form-group > label .q-num {
+    font-family: var(--mono); font-size: 0.7rem; color: var(--gold-dim);
+    margin-right: 8px; letter-spacing: 0.1em;
+  }
+  .radio-option { display: none; }
+  .radio-label {
+    display: inline-block; padding: 12px 20px; cursor: pointer;
+    border: 1px solid var(--border-subtle); background: var(--bg-card-elevated);
+    font-size: 0.9rem; color: var(--text-secondary); font-weight: 400;
+    transition: all 0.25s ease; margin-right: 6px; margin-bottom: 6px;
+  }
+  .radio-label:hover { border-color: var(--border-gold); color: var(--text-primary); }
+  .radio-option:checked + .radio-label { border-color: var(--gold); color: var(--gold-light); background: rgba(201,168,76,0.06); }
+  .select-wrap { position: relative; }
+  .select-wrap select {
+    width: 100%; padding: 14px 18px; appearance: none;
+    background: var(--bg-card-elevated); border: 1px solid var(--border-subtle);
+    color: var(--text-primary); font-family: var(--sans); font-size: 0.95rem;
+    cursor: pointer; outline: none; transition: border-color 0.25s ease;
+  }
+  .select-wrap select:focus { border-color: var(--gold); }
+  .select-wrap::after {
+    content: '▾'; position: absolute; right: 16px; top: 50%; transform: translateY(-50%);
+    color: var(--gold-dim); pointer-events: none; font-size: 0.85rem;
+  }
+  .calc-form .cta { width: 100%; text-align: center; margin-top: 8px; }
+  .tg-note {
+    margin-top: 16px; text-align: center;
+    font-size: 0.78rem; color: var(--text-muted);
+    font-family: var(--mono); letter-spacing: 0.05em;
+  }
+
+  /* ══════════════════════════════════════
+     FOOTER
+     ══════════════════════════════════════ */
+  footer {
+    text-align: center; padding: 60px 24px 40px;
+    font-size: 0.78rem; color: var(--text-muted);
+    font-family: var(--mono); letter-spacing: 0.08em;
+  }
+
+  /* ══════════════════════════════════════
+     SCROLL REVEAL
+     ══════════════════════════════════════ */
+  .reveal { opacity: 0; transform: translateY(30px); transition: opacity 0.8s ease, transform 0.8s ease; }
+  .reveal.visible { opacity: 1; transform: translateY(0); }
+
+  /* ══════════════════════════════════════
+     RESPONSIVE
+     ══════════════════════════════════════ */
+  @media (max-width: 768px) {
+    section { padding: 70px 20px; }
+    .hero { padding-top: 100px; padding-bottom: 80px; }
+    .case-card { padding: 36px 24px; }
+    .case-grid { grid-template-columns: 1fr; gap: 28px; }
+    .case-result { flex-direction: column; text-align: center; }
+    .audit-features { grid-template-columns: 1fr; }
+    .calc-form { padding: 32px 20px; }
+    .comp-table th, .comp-table td { padding: 14px 12px; font-size: 0.82rem; }
+    .verdict { padding: 24px; }
+    .metrics { grid-template-columns: repeat(2, 1fr); }
+    .metric { border-bottom: 1px solid var(--border-subtle); }
+    .sofia-quote { flex-direction: column; align-items: center; text-align: center; }
+    .navbar { padding: 0 16px; }
+    .nav-logo { font-size: 0.85rem; }
+    .nav-cta { padding: 8px 16px; font-size: 0.65rem; }
+    .faq { padding: 70px 20px; }
+  }
+
+  /* ══════════════════════════════════════
+     ABOUT / ARCHITECT
+     ══════════════════════════════════════ */
+  .architect { max-width: 860px; margin: 0 auto; padding: 100px 24px; }
+  .architect-inner {
+    display: flex; align-items: center; gap: 48px;
+  }
+  .architect-photo {
+    width: 160px; height: 160px; border-radius: 50%; flex-shrink: 0;
+    object-fit: cover;
+    border: 2px solid var(--border-gold);
+    box-shadow: 0 0 40px rgba(201,168,76,0.15), 0 0 80px rgba(201,168,76,0.05);
+  }
+  .architect-info { flex: 1; }
+  .architect-info h2 { margin-bottom: 8px; font-size: clamp(1.4rem, 3vw, 1.8rem); }
+  .architect-title {
+    font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.2em; text-transform: uppercase;
+    color: var(--gold-dim); margin-bottom: 20px; display: block;
+  }
+  .architect-info p { font-size: 1rem; line-height: 1.8; }
+  .architect-stats {
+    display: flex; gap: 32px; margin-top: 24px; padding-top: 20px;
+    border-top: 1px solid var(--border-subtle);
+  }
+  .architect-stat-num {
+    font-family: var(--serif); font-size: 1.6rem; font-weight: 800; color: var(--gold); line-height: 1;
+  }
+  .architect-stat-label {
+    font-family: var(--mono); font-size: 0.62rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-muted); margin-top: 6px;
+  }
+  @media (max-width: 768px) {
+    .architect-inner { flex-direction: column; text-align: center; gap: 28px; }
+    .architect-stats { justify-content: center; }
+    .architect { padding: 70px 20px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="grain"></div>
+
+<div class="bg-orbs">
+  <div class="orb orb-1"></div>
+  <div class="orb orb-2"></div>
+  <div class="orb orb-3"></div>
+</div>
+<div class="bokeh-layer" id="bokehLayer"></div>
+
+<!-- Sticky Navbar -->
+<nav class="navbar" id="navbar">
+  <div class="nav-logo">Автономная бизнес-система</div>
+  <a href="https://t.me/yanazlata22" target="_blank" class="nav-cta">Забронировать Системный Аудит</a>
+</nav>
+
+<div class="wrapper">
+
+  <!-- ═══════════ HERO ═══════════ -->
+  <section class="hero">
+    <span class="label">Autonomous Business Architecture</span>
+    <h1>Архитектура Доминирования.<br><span class="gold">Автономная бизнес-система</span> вместо человеческого хаоса.</h1>
+    <p class="subtitle">Проектирую цифровые активы, которые оцифровывают вашу гениальность и&nbsp;заменяют штат сотрудников. Внедрение за 48&#8209;часовой инженерный цикл.</p>
+    <div class="condition">Только для проектов с&nbsp;оборотом от $3,000/мес</div>
+    <br>
+    <a href="https://t.me/yanazlata22" target="_blank" class="cta"><span>Забронировать Системный Аудит</span></a>
+  </section>
+
+  <!-- Marquee -->
+  <div class="marquee-wrap">
+    <div class="marquee-track">
+      <span>24/7 Autonomous Sales</span><span class="sep">◆</span>
+      <span>Digital Twin Technology</span><span class="sep">◆</span>
+      <span>Zero Human Debt</span><span class="sep">◆</span>
+      <span>48h Engineering Cycle</span><span class="sep">◆</span>
+      <span>Extraction of Genius</span><span class="sep">◆</span>
+      <span>Algorithmic Management</span><span class="sep">◆</span>
+      <span>Digital DNA Preservation</span><span class="sep">◆</span>
+      <span>24/7 Autonomous Sales</span><span class="sep">◆</span>
+      <span>Digital Twin Technology</span><span class="sep">◆</span>
+      <span>Zero Human Debt</span><span class="sep">◆</span>
+      <span>48h Engineering Cycle</span><span class="sep">◆</span>
+      <span>Extraction of Genius</span><span class="sep">◆</span>
+      <span>Algorithmic Management</span><span class="sep">◆</span>
+      <span>Digital DNA Preservation</span><span class="sep">◆</span>
+    </div>
+  </div>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ ANNOYANCE ═══════════ -->
+  <section class="annoyance reveal">
+    <span class="label">The Annoyance Factor</span>
+    <h2>Что вас <span class="gold">бесит</span>?</h2>
+    <ul class="annoyance-list">
+      <li>Надоело быть «нянькой» для сотрудников и&nbsp;бесконечно их обучать?</li>
+      <li>Устали от того, что продажи и&nbsp;контент зависят от настроения менеджера?</li>
+      <li>Ваш бизнес буксует, потому что вы замкнули всю операционку на&nbsp;себе?</li>
+    </ul>
+    <div class="verdict">
+      <p><strong>Человеческий фактор</strong> — это самая большая статья ваших убытков. Пора переходить на&nbsp;алгоритмическое управление.</p>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ CASE STUDY — SOFIA ═══════════ -->
+  <section class="case-study">
+    <div class="case-inner reveal">
+      <div class="case-card">
+        <span class="case-badge">★&ensp;Extraction of Genius&ensp;★</span>
+        <h2>Оцифровка экспертности: как превратить хаос в&nbsp;<span class="gold">автономный отдел продаж</span></h2>
+        <div class="case-grid">
+          <div class="case-block">
+            <h3>Проблема</h3>
+            <p>Топ-эксперт София Дробинина была заперта в&nbsp;рутине обучения менеджеров. Текучка кадров и&nbsp;«размытие» смыслов мешали масштабированию.</p>
+          </div>
+          <div class="case-block">
+            <h3>Решение</h3>
+            <p>Мы провели экстракцию методологии Софии и&nbsp;создали Digital&nbsp;Twin — систему, которая ведёт переписки и&nbsp;продаёт на&nbsp;основе её 10&#8209;летнего опыта.</p>
+          </div>
+          <div class="case-block">
+            <h3>Внедрение</h3>
+            <p>48&#8209;часовой инженерный цикл. Полная интеграция в&nbsp;существующие каналы коммуникации. Нулевое обучение команды.</p>
+          </div>
+        </div>
+        <div class="case-result">
+          <div class="result-number" id="counterTarget">0%</div>
+          <div class="result-text">Автономия в&nbsp;переписках. Система не&nbsp;выгорает, не&nbsp;ошибается и&nbsp;продаёт в&nbsp;стиле владельца 24/7/365.</div>
+        </div>
+        <div class="sofia-quote">
+          <img class="sofia-avatar" src="data:image/jpeg;base64,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" alt="София Дробинина">
+          <div>
+            <blockquote>«Впервые за 10 лет я&nbsp;перестала быть узким горлышком собственного бизнеса. Система продаёт точно так, как я&nbsp;бы продавала сама — только без выходных и&nbsp;больничных.»</blockquote>
+            <cite>— София Дробинина, основатель</cite>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ═══════════ METRICS ═══════════ -->
+  <div class="metrics reveal">
+    <div class="metric">
+      <div class="metric-num" data-count="48">0</div>
+      <div class="metric-label">Часов на внедрение</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num" data-count="100" data-suffix="%">0</div>
+      <div class="metric-label">Автономность</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num" data-prefix="$" data-count="3000" data-suffix="+">$0</div>
+      <div class="metric-label">Экономия / месяц</div>
+    </div>
+    <div class="metric">
+      <div class="metric-num" data-count="24" data-suffix="/7">0</div>
+      <div class="metric-label">Работа без перерывов</div>
+    </div>
+  </div>
+
+  <div class="section-divider" style="margin-top:0;"></div>
+
+  <!-- ═══════════ COMPARISON TABLE ═══════════ -->
+  <section class="comparison reveal">
+    <span class="label" style="text-align:center; display:block;">Asset vs Expense</span>
+    <h2>Расход vs. <span class="gold">Актив</span></h2>
+    <div class="table-wrap">
+      <table class="comp-table" id="compTable">
+        <thead><tr><th>Критерий</th><th>Традиционный отдел</th><th>Автономная система</th></tr></thead>
+        <tbody>
+          <tr><td>Ежемесячный бюджет</td><td>$3,000+ (ФОТ, налоги, софт)</td><td>$0 — только за внедрение</td></tr>
+          <tr><td>Скорость реакции</td><td>Дни на ресерч, недели на макеты</td><td>Мгновенно. Скорость мысли</td></tr>
+          <tr><td>Человеческий фактор</td><td>Выгорание, отпуски, драмы</td><td>100% стабильность 24/7/365</td></tr>
+          <tr><td>Сохранение опыта</td><td>Сотрудник уходит — опыт уходит</td><td>Digital DNA навсегда в коде</td></tr>
+          <tr><td>Ваша роль</td><td>«Нянька», контроль, обучение</td><td>Архитектор результата</td></tr>
+          <tr><td>Статус в балансе</td><td>Статья расходов</td><td>Ликвидный актив</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ AUDIT ═══════════ -->
+  <section class="audit reveal">
+    <span class="label">Strategic System Blueprint</span>
+    <h2>Это не просто консультация.<br>Это <span class="gold">архитектурный план</span> вашего доминирования.</h2>
+    <div class="audit-features">
+      <div class="audit-feature">
+        <div class="num">01</div>
+        <h3>Карта оцифровки</h3>
+        <p>Какие именно процессы мы переведём в&nbsp;автономный режим и&nbsp;в&nbsp;каком порядке.</p>
+      </div>
+      <div class="audit-feature">
+        <div class="num">02</div>
+        <h3>Расчёт Human Debt</h3>
+        <p>Сколько денег вы теряете на&nbsp;текущей модели управления. Конкретные цифры.</p>
+      </div>
+      <div class="audit-feature">
+        <div class="num">03</div>
+        <h3>Blueprint внедрения</h3>
+        <p>Пошаговый план развёртывания вашей системы. От&nbsp;аудита до&nbsp;полной автономии.</p>
+      </div>
+    </div>
+    <a href="https://t.me/yanazlata22" target="_blank" class="cta"><span>Забронировать Системный Аудит</span></a>
+  </section>
+
+  <div class="section-divider"></div>
+
+
+  <!-- ═══════════ ARCHITECT ═══════════ -->
+  <section class="architect reveal">
+    <div class="architect-inner">
+      <img class="architect-photo" src="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAYEBAUEBAYFBQUGBgYHCQ4JCQgICRINDQoOFRIWFhUSFBQXGiEcFxgfGRQUHScdHyIjJSUlFhwpLCgkKyEkJST/2wBDAQYGBgkICREJCREkGBQYJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCT/wAARCADIAMgDASIAAhEBAxEB/8QAHwAAAQUBAQEBAQEAAAAAAAAAAAECAwQFBgcICQoL/8QAtRAAAgEDAwIEAwUFBAQAAAF9AQIDAAQRBRIhMUEGE1FhByJxFDKBkaEII0KxwRVS0fAkM2JyggkKFhcYGRolJicoKSo0NTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqDhIWGh4iJipKTlJWWl5iZmqKjpKWmp6ipqrKztLW2t7i5usLDxMXGx8jJytLT1NXW19jZ2uHi4+Tl5ufo6erx8vP09fb3+Pn6/8QAHwEAAwEBAQEBAQEBAQAAAAAAAAECAwQFBgcICQoL/8QAtREAAgECBAQDBAcFBAQAAQJ3AAECAxEEBSExBhJBUQdhcRMiMoEIFEKRobHBCSMzUvAVYnLRChYkNOEl8RcYGRomJygpKjU2Nzg5OkNERUZHSElKU1RVVldYWVpjZGVmZ2hpanN0dXZ3eHl6goOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4uPk5ebn6Onq8vP09fb3+Pn6/9oADAMBAAIRAxEAPwD5ZpaSimAVJH0amU9B8poAjPWkpTSUAFFLijFACUUtOWJm6UAMoqRYixoePYeaLgMop2wnoDSHpQAUUUUAFHaiigBad1FNpQcUAKaiepT0qKQ0gNDQP+P5a67xG+66j9lrkvD3/H8tdTrxJu1z/dpkS3Mz/l6tv+ugopVGby0H/TSimkRI5iigUtI2ENSJ9w0ynp9w0ARUUVPBHubpu9qG7AhiRMx7fnUgTLYPH1qeOKPB3fL9e1QyvtOBg46EVnzXL5RAqjOSpp4KouSRg+lQoC569asx2Luwx0zycdKG7DUSMSq7HjFWDhscYI5BofTpFViFBKcsR2oa3mEJYqce9Q5IpRZEVR2AB57mkmtCpBjDMuBnjvSBXJ6cjmp4Z8ZVxnjjaarmYuVEP2XAJb5R7DNMEDOpKjO0dR/WtO3MbP8AdB55BPFFxCY1lKlHD/NgdVpe01sHs9LmKRiipp4yCMA+lQ1qjJi0DFFFNgOPSonqQ8Co3pAafhwZvhXSa2W+2c9hXO+GR/p4/D+ddFrrA3xx6UyHuUYedQtP9+ii251KzH+3RVIiW5y9FHSjNSbAaen3DTKen3DQA0KScAVbiQwYJZQQOOagt03EkngcnmraIJQWPFZTZrTjcjJfkqc47Gn21m1w3T61pxaFc3MYeKJiCB0HJrr9C8ITC1UtA5ZuvFcs8QorQ7IYZy3OHXSwJQYm4z3/AMa2rTS5yhdYzjbz7j6V6hpHgWQD/jz6/wARXP45NdVY+CngwxSPP93aMD61zvENnTHDJHien6DeNtjeFsMMc/xLVq60KT7P5DWzAhuSQeg9a97g8MW6tlrJPbA6e4pR4aiI2zQBlOdp2jIqXVuP2Nj5wGk2ks85IZGYFUOOB05/mayLvRZo5MwxFw3Kkds19F6t8OdPkQhYSDtAU46eufeuM1rwTLYx5tmDKOCCOn/16uOIsZvD3PG0gltyNxIByu4U9mzA8i54OSOwrqdQ06GORi6Om0Y+5yCTyQPWsiWKHiKMAqBhhnv/AF966I1ebUxdLlVjDlKsmQAMnnNU2GCas3BMbspweciqp9a647HBLcBS0lLVEik5qN6fUbUAa3hvi8B9xW3qr7rxj7VgaC226B9xWteybrljmmQ9x9lzqtp/vUUzT3/4m9p7NRVIiW5zFFGaQmoNhakT7pqLNSx8rjOOaALaEJEcAYbgZ6/pW14f0lb64CS7QuQRjPP+TWATs27TxXefD+wbUpRukRETuw6D2rjrtqOh24dJy1O58O2mn2kO25QRbeFwuc89Pc+1d54a8PzXf+k3MTRIxyEPGB2+lT+EdDtbYAJGGYEHLAHH+f613kFup9K8xqx6ilfYpW2k7l2IuF6AVcOltGmCvFadquxlx+vetGaNZYgSB0qowurilNxZzJttnGOlBhFXp1O7GKrspB7VDRaZny24yf61zevabDLksihuzYrq5ZByOvaud8RShbZ2HBAzknpSSKPF/FllGs8qPzjvgc153qpaCQjaEizncMcjPIr0TX737WZOmOeveuC1KTzA8TxqcHuP8K9ChE83EM5ec+Z+8xyTn6VCRgdfwrRaBVRtoYZ42t1FZrYHSu+LPOkgozRRVEgaY3Wn0xutAF3S2KzjFaE8hMxJqjpCb7hatXfyzsKZL3LGmyf8TW3J9aKrWMmNQiPpRTRElqZFJRRUmoVLFnHA61FU0a7gQOO9DAkZSzrgYJ7V6X8L/sYC+dl2ckKm7HI9favNFVMjJ2gc5rrPAkkyapEsUbkMQWwM5Ge3pXLXXunVRfvH1V4diX7OrBQq4AVV/nXVWyblHv1rm/D1vJBp8RlOZCAT7e1a7arHaL5ao09wRlYY+WP+H415T95nqw0RrqpVxjAAq6XWSLGf1rgtW8Q+IbOIyppUTL2QP8w9q5IfGPWLS6VLvQwIwdrAFlI/HFbRTRMnc9bu4wgLA1RJ7VjaR4r/ALdt2l8iWAg8pJyfzFWpbzyuWOM1jJ6msFoF4Qg69K4vxfeiOxk5zkHgd6m8U+ObHQl3XDZBHavKfEHxZtL6Xy47CV488YcEmrp05S1SFOrGOjKl9aOYd5XAAx7n1rz7UJ8tIQeVbHpkV3t74ns9SsZEWKWCTblVkXGeORn1rzK7kKyN6HIr0KEXrc83EyXQiknK713EkjHrgVSYYPPWrAaMbSzk/wCyBUEhyxNdUdDhY3NLTaWqEBpppxph60AbHh2PzLn8qk1JSt0496f4VXdcGnakn+lycd6ZHUp2YJvUoqbT4t+oxj2ooFJmLRRSikaB3q7DEqBdw3bupJwB/jVNcbhnpmriYuJVBGN7BB6AE4qZFROru/AN3F4ei1ZZIVaRBMbUNmRYz0cjqAa0/hhCV1eAMxHzglSMgivfdH+Hek3UF8JbRJbgEwBvvFYwgGF9OufwryK38PXOh+K1tOsaT7VbGN3PX647V5KxDlFqR7FXDRhL3D6Fs3DxJtHUdPSklnsfDNhdahdyiKPl5ZT95j6CjTVyqoTk7RzV270q31NFS6XzYx0UjIP19a5oyszdx0PF/Efxwe5l8qw0KeS3YApLLw0oJwCoPUfhT9Cv31F4JNRspbP7ST5YliAUkEggOMc57EV6de+GdOMRjXTI3OeqoMj8ar2fhg+aimxhWBTxHKd/5DoK6JOLWiJpxkndvQn0TR3tdpwyr6MMVmfFi+fQPD0l5BncFGMdia7iXdFaKr7QUGAF7Vx/xAtotR8NX0N0AyNA3U9MCsFFJmkbs+Yjfat4s1BoYy1xKfmfLYSNf7zE8KB61raNY+GtBv0n1e9lv5Qu5Ut7V/KBz13NjcMgjpiug+CUGi2+pXcd7HN/asUglg5zHIgHXb0LA88+vHSvQNZ8JaHua7tUKOyBWV+DgHIBOenJ4rtlJR0OTknJXPMfGl5pGq6K97YzxSqCM7Rynp0ry285hV+pJr0rxJ4Xu5L68k0m3SNZ4ykqIvyP3/A+9eearZzWcSwTqUkVuVPUV04drZM48UnfVGb8oPzKPYnpUJJPWrJP+jmP8aq10o5GrBS0lOpiCmN1p9RnrQB0ng8ZuDUmoKDdyfWovCJxcE1PeHN1J9afQze4miQeZrMa+1FW/DKg66n+7RVImW5xlKKKKg2Cpo3O1ecYOQfQ1DTx9ygD7S+HutjxB4Si1e2kCm8tlZlUciQYSQfmv60t94KtY9Ci1BQ7XsrvMW64wRXkP7M3jaO3vbnwpeS7PPJuLJmP/LTHzp/wIAHHsa+jZbdprVo0kIHJ8vbnB9jXhV6XJNo9+nV9rTUr+pz+i3SygEHqBXTWw3IcHrXHafCbK6lhYEFXIwfrmuns7pVUEtWUd9TdK6LThl4HApE3KMhTxUV9rkEUJOFBHeuSh1nUPFWpSWlhL5NpB/r7jrz/AHV9/wCVa3WyKUbq7VjqbycKpBYH29K57xdD9s8LXSIMu0bLj8Kfc6vp1jMljNeQxXWAPKkcKx9wD1pdTv7NdOIWXf8AIS3oKiOhaimfO3g8Tf8ACZ2ECuIJVmDbuhGOT+gr6RL290g86GNs9eODXyrq2qpbeIZr20lCtHKzxSA9CG4+oNe/+C/FkHijQ4rxWUTAbZox/A46j6dxXTX0SZy0LXcWW/EMdna2busUaEAnIGK+aPHdzFdX7umOGxXvPjvVRb6fIN3bFfN+subi4fac5Yk1rg463ObHpJJIy5MBSe22qtWLlhhVFV69FI8mT1FFLSUUyRajPWpKjPWgDofCpxKf89qluW/fufeq/hptsh+hp87/AL5/rTI6ml4YbGtg/wCzRUXhpv8Aibk/7IoqkRLc5OiiioNgp4+6KZTsZAFAFiwubi1uo7i2leGaJg6SIcMpHIIPY19V/CT4san4h0uzfW1W3KQSh7hnQLdbSBvVc7sjDbuMd6+TAGHbAruvB/jWx0GytYp7C9urq2ebYY5Y1j2SADbypYck5weeK5sTS546bnRh6rhLyPqq/mt7jUBc200c0VxGsiuhBVsjqCPpQ8skcfFeP/BvVBDbPpu8lIgrKuSQvJBx9fT2r2KEq8YbqK8WqnFtHuUZ80bnH+J5NVvbqz0m1by3vScuf+Wca8s5+g/XFdx4b0600PT47S0z5Sj5mb7zserE+prOuNMF3q0E54BhaAY4I5BP8qwdb8F6zp91Ld2uv6lcWEmSbaRlPlHP8PAyKdI3fvWidxqWk6LrIzf2NjdlRhTMisR9CeleVePdA1GTT71NEv7OKJEKC3ec5b/ZVj/In8adaadqE9sGvtZuLH94wbNr5iBeduWHcjFYviDRpzBM9t4ls5wn3F8hgzcZ/wDrVtbW5fsUrp3+5nhUiTRXLpcKyyKcMrdRXYfD/wAVyeHNZiYykW8zLHMp6bSev4daq6r4Y1zUrncsiTEBdskny9RyMe3Suj8L/A/WtR1OzW71GyFtIQ8ssbklVHJwMDJ7V2VJwlDVnlKjUpVNn8zc+L17Np8SxE4MmQK8YuJwi5Y9c/U16Z8bNXTUPEf2K3YmGzGwH14HWvJr1gZsDsMVeDjaByY2pediF2LsWPem0UV2nCFKKSigBaYetOppoA2/D2AzfQ0TN+9f60zQuGf6U2Vv3jH3pk9TS8OSbdSYn0oqvobbbxz7UUyJbmDRRRUmoU7otJ17VLGgbG7oASaACIlmA2lh3UVdhPlyg7QGHTHrUSSlEwCq57dOKt2kbT5mk4AG1QPWs5vQ0gtT2f4PN5+j3MSKu/zQSwHIIXIz7da9U0e/EieUxAYdvSvLvghZGOS4kZiFk2HaD357f5616XrWj3NrcC9sBkkfMg6Ee1eLWScmj2KLcYpnSWmGkGccHNawGVKkbga4Cw8UJvEcuY5U+8jcEV2WnarDNGpLDB6HNTDTQ3cr6og1KwKWzpAVVG6qVBribzwxJKWG6EK3Oef5V6VeSWz2/wArK30rn7xowhOcGtJXNaVecVoeY6l4fS3kC7y+DzxipbjxEvhixmuywVo4mCLn2/8A1Vc8S6va6cryyuuR0BNeJeL/ABRJrMjxq+2BTlj2b/61XTpuo7HNXr8vvN6mJrWqyXk895KxZ5WLH3JrnSSSSepqW6uPOfC5CDoPX3qHNetCPKrHh1JuTuwoooqyAooooAKaadTTQBtaGuQ59jUMo/eN9au6AmYJD7Gqsq/O31pk9SfRf+Pp/pRT9CQtdSUUEy3MCiiikaDgRjHPPWnZIUj1FMBwanT5VywB9qTAkt4lwDLlgOiitKK6WNMHGeiqvASsppBs2jh/88Vrx+HtRisYb2WHy4ps+W7HIYg8jj69PpWc13NIu2x778GrXGgi7wAZjuHqQDjJ/HNev2qi4t8NyR0Ncd4P0gaRodjYqADBbRq2P72Mn9Sa6/S3KDH868Pm5pNntJWgkzI8QeF7HUY8ywlZF+68Zwy/Q1wNxL4j8JSu0MMmpWK8koP3ij3Xv9R+VevXSqUPb+VYiJELnD4xVJ2EtNUecx/F6waMh5WjburjBFV734naats0n2pJJCPlRa6nxj8MvD3ixZJzGtpeEZE8HGT/ALQ718++LfA2qeEbzyrnbLAT8k0Zyp/wNdFKEJOxnOvNLQb4q8VXOt3LmSQiEciNT29zXDXVy9w3zH5R0A6Vp37+VA57n5RWMTXp04KK0PMrVHJ6iUtJRWhiL0opM0tABRSZpc0AFNNLSGgDo9AkWO0fJ6g1WkIZj9ao212YUIB605bjJ60ybam94Zi8y6m9qKi8OXYgeZj370UyGtTmqKKKk1FBqXJwOTUNOzgZ/SgDR0axl1LUoYYUDsSXKjk4UZP8q9B0vUI7KOW1uEaaznI8yMDJUjo69gw7evQ8Guc8P6ZNpDpcyCSK8+WQY4ZBwyn+RrotUSO6tRq9oqpHI+y4iUYEEuM9P7rckfiO1S1cLnr/AIE8Zxzypo+pzq92VBt7kcJdx9mHo3HT1B716PYNywx3r5f0u4N5GmlyOqyljJZylseXL/cz2V8fg2D616t8NPict66aPrsvlXyny455OBKf7rej/wA/rXlV8LyPmjsepQxPOuWW56pcPhSD6d64fxHqX2S4R1bHzDoa6nVLsJHjPJrznxa5mhZweQa5up1w7nRRX0jLvU7lx9DXkvxZ1SWdxbshVA2Tmu78Oakt1p+WbkDBrzX4lSCe5PzdDwBW9BWkZ1V7rPKtYY/ux6kmsytTWlK+UR2yKzAwPUV7Edjxp7iUU4r3U5FNpkhRRRQAUUUUAFJS0lADh0ozinxKCOTTWGDQBasr024YHvRVMUUCsLRRRQMKv6RaSXN9ERD5iIwL54AHv/hVzTfDkk4Sa8/dRN91c4Zv8BXUW9sUtkjs4onUL/qoX+cfUcE/UZpNgaMEy6pDHZTuizIBHbTv2GeI2P8Ad54Pbp06RWFy1hcyx3MTtBKphuYgMHGf0ZSMj0I+tZF1cRwkupdUJ2sjNnb9D3H8q09Qb7XBDex5MuBFPnuw+65/3lH5qfWkAl7ZNZTbNwkjYb45V4WVD0I9Pp2II7VZv2/tKzGpRn/SFKx3eO7fwSD/AHsEH/aGf4qr2Ja8sZ7NwfOhBuIM8nj/AFi/io3Y/wBk+tM0q5ihuylxu+yTjyZjj7qH+Ie6nDD6UWuCdjt/B/xZkQJoviKYnosF63p2WT/Gun1aVZY3BdTuUkYOcivFNU07yXltJ+ZI2Kkj1HQj+Y+tW/CnjS58O3sdjqu+ayHAPJKKe49vauCthbPmielh8Tf3ZHa+GdXENxcWrOQAxxUNxp41rUmULvOTjisPW4xpmsjUrKTzbC8/exSKcg+o/D0r1z4Y+HYp4Pt0zLI0g3KRzwaxemqOtarU+cPFNg0V9d2pGHic4FcwBg4PFek/E+xbT/HeqwuuMybx9CK4i7tAZAxGFbqR2r06crxTPJrQ952DQ9A1DxBei106CS4kCl2EY3MFHU46mrWpeG57V2QKyuv3kkG1gfoa0bTwh4p0JYdWOjagLN9m24WIgYYZU57Z4INdQmv6mYxb35jv4hwY71PMx9GPzD8DWlznPLHRo2KupVh1Bptd3rWj6XqkZe3DWNwBkI53xsfQN1H45+tcbcadc2sjxyxMGT73t70DK1FFFABSUppKAJkQ7c0w81atwhhbPXFVXHPFADQOtFAJAooAWuk0PRki8q4ugnmSAMiyZ2xL/ebAJ+gxRRQBuzvc2KeYfImglYfMmJImI7H0P1waltYbbVnEVrGIL7PyQ7vknPorHlX9ASQegIOASigCreTQ3ytFfxMrn5TOBh/TDDv9fvfWm6DfLZXwsL9swTKYjJn5ZIz/ABD/AGlOG/4DRRQBYD3OkamOiT2suDnoSD+oP8jUmoQxwXDyQDNvMokhH90Ht9VII/CiikBJdkX+nxXgH72Dbbz5PJGP3bfkCv8AwEetZF1Zi6iI4aWEF1I7r3H4dfzoooY07MsaNqaW0TadcyFrWQ/MjDmNv76+h/nXt3wd14abDJo19IrAAtbTA/LIh7fUUUV59eKSuexh5c2jMj4w+CP7b8VadqcLbYrlDFMy+o5H5815zN4KlguWgdllCN0IwSPeiis6dWVuXoXOjC/N1PdPhTrRGi3Oi3z+fHp65g8zkm2PVD67D09j7Vl+PPhvYT2s2oaVF5dwMsBH92Qf3SPX0I/GiivTwz5qWp5GKio1LI8hitTdv5Mbqsp48mU7S59FY8Z9jg1j6nplzayGKWJ45I+MOCCvt9PaiimnqYlS2s4NbL2L2ardIpZGjwr4H/oX865/UdMm06Qq/wAy5xuAooq2gKdIOtFFSM07ezMlq0npVJ0I4xRRTEMCcZooopDP/9k=" alt="Яна">
+      <div class="architect-info">
+        <span class="label">Architect</span>
+        <h2>Яна Вудмаска</h2>
+        <p>Проектирую цифровые активы, которые заменяют отделы продаж, маркетинга и&nbsp;клиентского сервиса. Каждый проект начинается с&nbsp;экстракции вашей гениальности — и&nbsp;заканчивается системой, которая работает за&nbsp;вас.</p>
+        <div class="architect-stats">
+          <div>
+            <div class="architect-stat-num">27</div>
+            <div class="architect-stat-label">Внедрённых систем</div>
+          </div>
+          <div>
+            <div class="architect-stat-num">6 лет</div>
+            <div class="architect-stat-label">В digital и автоматизации</div>
+          </div>
+          <div>
+            <div class="architect-stat-num">48ч</div>
+            <div class="architect-stat-label">Цикл внедрения</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+  <!-- ═══════════ FAQ ═══════════ -->
+  <section class="faq reveal">
+    <span class="label" style="text-align:center;">Вопросы</span>
+    <h2>Частые <span class="gold">вопросы</span></h2>
+    <div class="faq-item">
+      <button class="faq-q">Что такое Digital Twin и как он работает?<span class="faq-icon"></span></button>
+      <div class="faq-a"><p>Digital Twin — это цифровой двойник вашей экспертности. Мы извлекаем вашу методологию, стиль коммуникации и&nbsp;принципы принятия решений, после чего создаём систему, которая действует от вашего имени: ведёт переписки, отвечает клиентам и&nbsp;продаёт — точно в&nbsp;вашем стиле.</p></div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">48 часов — это реалистичный срок?<span class="faq-icon"></span></button>
+      <div class="faq-a"><p>Да. 48 часов — это инженерный цикл от начала экстракции до запуска рабочей системы. Мы используем отлаженный протокол, который позволяет развернуть ядро системы за этот срок. Дальнейшая калибровка происходит в&nbsp;рабочем режиме.</p></div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">Мне нужно разбираться в AI и технологиях?<span class="faq-icon"></span></button>
+      <div class="faq-a"><p>Нет. Вся техническая часть — наша зона ответственности. От вас требуется только ваша экспертность и&nbsp;2–3 часа на интервью-экстракцию. Дальше система работает автономно.</p></div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">Что если система ошибётся?<span class="faq-icon"></span></button>
+      <div class="faq-a"><p>Система проходит калибровку на основе ваших реальных кейсов и&nbsp;стиля. В&nbsp;отличие от нового сотрудника, она не&nbsp;импровизирует — она следует вашей методологии. Плюс вы можете настраивать границы автономии: какие решения система принимает сама, а&nbsp;какие эскалирует вам.</p></div>
+    </div>
+    <div class="faq-item">
+      <button class="faq-q">Для каких ниш это подходит?<span class="faq-icon"></span></button>
+      <div class="faq-a"><p>Для любого экспертного бизнеса, где есть повторяемые процессы: продажи через переписку, консультации, работа с&nbsp;клиентами, контент-маркетинг, обучение. Если ваш бизнес зависит от вашего личного участия — это для вас.</p></div>
+    </div>
+  </section>
+
+  <div class="section-divider"></div>
+
+  <!-- ═══════════ CALCULATOR ═══════════ -->
+  <section class="calculator reveal">
+    <span class="label">Automation Potential Calculator</span>
+    <h2>Рассчитать потенциал <span class="gold">автоматизации</span></h2>
+    <div class="calc-form" id="calcForm">
+      <div class="form-group">
+        <label><span class="q-num">01</span> Ваш ежемесячный оборот?</label>
+        <div>
+          <input type="radio" name="revenue" id="rev1" value="от $3,000" class="radio-option"><label for="rev1" class="radio-label">от $3,000</label>
+          <input type="radio" name="revenue" id="rev2" value="$5,000" class="radio-option"><label for="rev2" class="radio-label">$5,000</label>
+          <input type="radio" name="revenue" id="rev3" value="$10,000+" class="radio-option"><label for="rev3" class="radio-label">$10,000+</label>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><span class="q-num">02</span> Сколько часов в&nbsp;неделю вы тратите на обучение и&nbsp;контроль команды?</label>
+        <div class="select-wrap">
+          <select name="hours" id="hours">
+            <option value="" disabled selected>Выберите...</option>
+            <option value="5-10 часов">5–10 часов</option>
+            <option value="10-20 часов">10–20 часов</option>
+            <option value="20-30 часов">20–30 часов</option>
+            <option value="30+ часов">30+ часов — почти всё время</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group">
+        <label><span class="q-num">03</span> Какое звено в&nbsp;продажах/маркетинге сейчас самое слабое?</label>
+        <div>
+          <input type="radio" name="weakness" id="w1" value="Продажи / переписки" class="radio-option"><label for="w1" class="radio-label">Продажи / переписки</label>
+          <input type="radio" name="weakness" id="w2" value="Контент / маркетинг" class="radio-option"><label for="w2" class="radio-label">Контент / маркетинг</label>
+          <input type="radio" name="weakness" id="w3" value="Операционка / процессы" class="radio-option"><label for="w3" class="radio-label">Операционка / процессы</label>
+          <input type="radio" name="weakness" id="w4" value="Всё вместе" class="radio-option"><label for="w4" class="radio-label">Всё вместе</label>
+        </div>
+      </div>
+      <a href="#" id="submitCalc" class="cta" style="display:block; text-align:center;"><span>Забронировать Системный Аудит</span></a>
+      <div class="tg-note">Данные будут отправлены в&nbsp;Telegram</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="section-divider" style="margin-bottom: 40px;"></div>
+    Autonomous Business Architecture &ensp;·&ensp; 2026
+  </footer>
+</div>
+
+<script>
+// ═══════ BOKEH PARTICLES ═══════
+!function(){
+  var l=document.getElementById('bokehLayer'),
+      c=['rgba(201,168,76,0.4)','rgba(201,168,76,0.25)','rgba(232,212,139,0.3)','rgba(45,212,191,0.2)','rgba(255,255,255,0.15)'];
+  for(var i=0;i<55;i++){
+    var d=document.createElement('div');d.className='bokeh-dot';
+    var s=Math.random()*5+2;
+    d.style.cssText='width:'+s+'px;height:'+s+'px;left:'+Math.random()*100+'%;top:'+(Math.random()*120+100)+'%;background:'+c[Math.floor(Math.random()*c.length)]+';filter:blur('+(Math.random()*3+1)+'px);animation-duration:'+(Math.random()*20+15)+'s;animation-delay:'+(Math.random()*20)+'s;border-radius:50%';
+    l.appendChild(d);
+  }
+}();
+
+// ═══════ PARALLAX ORBS ═══════
+!function(){
+  var o=document.querySelectorAll('.bg-orbs .orb'),t=false;
+  window.addEventListener('scroll',function(){
+    if(!t){requestAnimationFrame(function(){
+      var y=window.scrollY;
+      o[0].style.transform='translate('+(60+y*.02)+'px,'+(40+y*.04)+'px)';
+      o[1].style.transform='translate('+(-50-y*.015)+'px,'+(-30-y*.03)+'px)';
+      o[2].style.transform='translate('+(40+y*.01)+'px,'+(-50+y*.025)+'px)';
+      t=false;
+    });t=true;}
+  });
+}();
+
+// ═══════ STICKY NAVBAR ═══════
+!function(){
+  var n=document.getElementById('navbar'),h=document.querySelector('.hero');
+  new IntersectionObserver(function(e){
+    e.forEach(function(e){e.isIntersecting?n.classList.remove('visible'):n.classList.add('visible');});
+  },{threshold:0.1}).observe(h);
+}();
+
+// ═══════ SCROLL REVEAL ═══════
+!function(){
+  var o=new IntersectionObserver(function(e){e.forEach(function(e){if(e.isIntersecting)e.target.classList.add('visible');});},{threshold:0.12});
+  document.querySelectorAll('.reveal').forEach(function(e){o.observe(e);});
+}();
+
+// ═══════ TABLE ROW STAGGER ═══════
+!function(){
+  var t=document.getElementById('compTable'),r=t.querySelectorAll('tbody tr');
+  new IntersectionObserver(function(e){e.forEach(function(e){
+    if(e.isIntersecting){r.forEach(function(row,i){setTimeout(function(){row.classList.add('row-visible');},i*120);});e.target._done=true;}
+  });},{threshold:0.2}).observe(t);
+}();
+
+// ═══════ COUNTER 100% ═══════
+!function(){
+  var el=document.getElementById('counterTarget'),done=false;
+  new IntersectionObserver(function(e){e.forEach(function(e){
+    if(e.isIntersecting&&!done){done=true;var c=0,t=setInterval(function(){c++;el.textContent=c+'%';if(c>=100)clearInterval(t);},20);}
+  });},{threshold:0.5}).observe(el);
+}();
+
+// ═══════ METRICS COUNTERS ═══════
+document.querySelectorAll('.metric-num[data-count]').forEach(function(el){
+  var done=false;
+  new IntersectionObserver(function(e){e.forEach(function(e){
+    if(e.isIntersecting&&!done){done=true;
+      var tgt=parseInt(el.dataset.count),pre=el.dataset.prefix||'',suf=el.dataset.suffix||'',c=0,steps=60,inc=Math.ceil(tgt/steps);
+      var t=setInterval(function(){c+=inc;if(c>=tgt){c=tgt;clearInterval(t);}el.textContent=pre+c.toLocaleString()+suf;},30);
+    }
+  });},{threshold:0.5}).observe(el);
+});
+
+// ═══════ FAQ ACCORDION ═══════
+document.querySelectorAll('.faq-q').forEach(function(b){
+  b.addEventListener('click',function(){
+    var it=this.parentElement,w=it.classList.contains('open');
+    document.querySelectorAll('.faq-item.open').forEach(function(i){i.classList.remove('open');});
+    if(!w)it.classList.add('open');
+  });
+});
+
+// ═══════ CALCULATOR → TELEGRAM ═══════
+document.getElementById('submitCalc').addEventListener('click',function(e){
+  e.preventDefault();
+  var r=document.querySelector('input[name="revenue"]:checked'),
+      h=document.getElementById('hours').value,
+      w=document.querySelector('input[name="weakness"]:checked');
+  var m='🔍 Запрос на расчёт автоматизации\n\n💰 Оборот: '+(r?r.value:'не указан')+'\n⏱ Часы на команду: '+(h||'не указано')+'\n⚠️ Слабое звено: '+(w?w.value:'не указано');
+  window.open('https://t.me/yanazlata22?text='+encodeURIComponent(m),'_blank');
+});
+</script>
+</body>
+</html>
