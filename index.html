@@ -784,7 +784,18 @@
         </div>
       </div>
       <a href="#" id="submitCalc" class="cta" style="display:block; text-align:center;"><span>Забронировать Системный Аудит</span></a>
-      <div class="tg-note">Данные будут отправлены в&nbsp;Telegram</div>
+      <div class="tg-note">Нажмите — скопируйте результат — отправьте в&nbsp;Telegram</div>
+
+      <!-- Result panel (hidden initially) -->
+      <div id="calcResult" style="display:none; margin-top:28px; padding:28px; border:1px solid var(--border-gold); background:rgba(201,168,76,0.04);">
+        <div style="font-family:var(--mono);font-size:0.68rem;letter-spacing:0.2em;text-transform:uppercase;color:var(--gold-dim);margin-bottom:14px;">Ваш запрос</div>
+        <pre id="calcResultText" style="font-family:var(--sans);font-size:0.95rem;color:var(--text-primary);line-height:1.8;white-space:pre-wrap;margin:0;"></pre>
+        <div style="display:flex;gap:12px;margin-top:20px;flex-wrap:wrap;">
+          <a href="#" id="copyBtn" style="flex:1;display:block;padding:14px 24px;text-align:center;font-family:var(--sans);font-weight:600;font-size:0.85rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--gold);border:1px solid var(--border-gold);text-decoration:none;transition:all 0.3s ease;cursor:pointer;">Скопировать текст</a>
+          <a href="https://t.me/yanazlata22" target="_blank" id="tgBtn" style="flex:1;display:block;padding:14px 24px;text-align:center;font-family:var(--sans);font-weight:600;font-size:0.85rem;letter-spacing:0.1em;text-transform:uppercase;color:var(--bg-deep);background:linear-gradient(135deg,var(--gold),var(--gold-light));text-decoration:none;transition:all 0.3s ease;">Открыть Telegram →</a>
+        </div>
+        <div id="copyConfirm" style="display:none;margin-top:12px;text-align:center;font-family:var(--mono);font-size:0.75rem;color:var(--teal);letter-spacing:0.1em;">✓ Скопировано! Вставьте в чат Telegram</div>
+      </div>
     </div>
   </section>
 
@@ -871,14 +882,30 @@ document.querySelectorAll('.faq-q').forEach(function(b){
   });
 });
 
-// ═══════ CALCULATOR → TELEGRAM ═══════
+// ═══════ CALCULATOR → RESULT + COPY + TG ═══════
 document.getElementById('submitCalc').addEventListener('click',function(e){
   e.preventDefault();
   var r=document.querySelector('input[name="revenue"]:checked'),
       h=document.getElementById('hours').value,
       w=document.querySelector('input[name="weakness"]:checked');
-  var m='🔍 Запрос на расчёт автоматизации\n\n💰 Оборот: '+(r?r.value:'не указан')+'\n⏱ Часы на команду: '+(h||'не указано')+'\n⚠️ Слабое звено: '+(w?w.value:'не указано');
-  window.open('https://t.me/yanazlata22?text='+encodeURIComponent(m),'_blank');
+
+  var msg = 'Запрос на расчёт автоматизации\n\n';
+  msg += 'Оборот: '+(r?r.value:'не указан')+'\n';
+  msg += 'Часы на команду: '+(h||'не указано')+'\n';
+  msg += 'Слабое звено: '+(w?w.value:'не указано');
+
+  document.getElementById('calcResultText').textContent = msg;
+  document.getElementById('calcResult').style.display = 'block';
+  document.getElementById('calcResult').scrollIntoView({behavior:'smooth',block:'center'});
+});
+
+document.getElementById('copyBtn').addEventListener('click',function(e){
+  e.preventDefault();
+  var txt = document.getElementById('calcResultText').textContent;
+  navigator.clipboard.writeText(txt).then(function(){
+    document.getElementById('copyConfirm').style.display='block';
+    setTimeout(function(){ document.getElementById('copyConfirm').style.display='none'; },3000);
+  });
 });
 </script>
 </body>
